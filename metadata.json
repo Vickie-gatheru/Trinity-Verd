@@ -1,0 +1,6 @@
+{
+  "name": "Trinity Verd Farmer Tracker",
+  "description": "Farmer details registry, castor seed distribution, harvest yield tracking (clean vs husks), MPesa payment calculations, and bulk SMS logging for Trinity Verd Limited in Kitui County.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
