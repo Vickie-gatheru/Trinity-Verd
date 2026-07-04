@@ -8,9 +8,10 @@ interface BulkSmsProps {
   pricing: PricingRates;
   onAddSmsLog: (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => void;
   onClearLogs: () => void;
+  privacyMode?: boolean;
 }
 
-export default function BulkSms({ farmers, smsLogs, pricing, onAddSmsLog, onClearLogs }: BulkSmsProps) {
+export default function BulkSms({ farmers, smsLogs, pricing, onAddSmsLog, onClearLogs, privacyMode = false }: BulkSmsProps) {
   const [recipientScope, setRecipientScope] = useState<'all' | 'subcounty' | 'single'>('all');
   const [selectedSubCounty, setSelectedSubCounty] = useState('');
   const [selectedFarmerId, setSelectedFarmerId] = useState('');
@@ -373,7 +374,11 @@ export default function BulkSms({ farmers, smsLogs, pricing, onAddSmsLog, onClea
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <strong className="text-slate-900 block font-semibold text-sm">{log.recipientName}</strong>
-                          <span className="text-xs font-mono text-slate-400">{log.recipientPhone}</span>
+                          <span className="text-xs font-mono text-slate-400">
+                            {privacyMode && log.recipientPhone.length > 6
+                              ? `${log.recipientPhone.substring(0, 4)} *** *** ${log.recipientPhone.substring(log.recipientPhone.length - 3)}`
+                              : log.recipientPhone}
+                          </span>
                         </div>
                       </td>
                       <td className="px-6 py-4 max-w-sm whitespace-pre-wrap leading-relaxed text-slate-650">

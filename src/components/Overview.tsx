@@ -65,9 +65,9 @@ export default function Overview({ farmers, distributions, harvests, smsLogs, on
       {/* Top Welcome Card */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-950 via-emerald-900 to-amber-950 p-6 text-white shadow-xl md:p-8">
         <div className="relative z-10 max-w-2xl space-y-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300">
-            <Sparkles className="h-3 w-3 animate-pulse" />
-            Kitui County's Leading Castor Seed Partner
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+            <Sprout className="h-3.5 w-3.5 text-emerald-400" />
+            Kitui County Castor Agriculture Portal
           </div>
           <h1 className="text-3xl font-bold tracking-tight md:text-4xl font-sans">
             Trinity Verd Limited

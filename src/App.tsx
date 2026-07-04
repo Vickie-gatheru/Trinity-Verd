@@ -14,9 +14,10 @@ import FarmersList from './components/FarmersList';
 import SeedDistributionComponent from './components/SeedDistribution';
 import BuyerDashboard from './components/BuyerDashboard';
 import BulkSms from './components/BulkSms';
+import SecurityCenter from './components/SecurityCenter';
 
 // Icons for navigation sidebar/topbar
-import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X, ShieldCheck, Database } from 'lucide-react';
 
 export default function App() {
   // --- Persistent Storage State Initializers ---
@@ -43,6 +44,11 @@ export default function App() {
   const [pricing, setPricing] = useState<PricingRates>(() => {
     const saved = localStorage.getItem('trinity_verd_pricing');
     return saved ? JSON.parse(saved) : INITIAL_PRICING;
+  });
+
+  const [privacyMode, setPrivacyMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('trinity_verd_privacy_mode');
+    return saved === 'true';
   });
 
   // --- Active Module switching ---
@@ -72,7 +78,39 @@ export default function App() {
     localStorage.setItem('trinity_verd_pricing', JSON.stringify(pricing));
   }, [pricing]);
 
+  useEffect(() => {
+    localStorage.setItem('trinity_verd_privacy_mode', String(privacyMode));
+  }, [privacyMode]);
+
   // --- Action Handlers ---
+
+  const handleRestoreBaseline = () => {
+    localStorage.removeItem('trinity_verd_farmers');
+    localStorage.removeItem('trinity_verd_distributions');
+    localStorage.removeItem('trinity_verd_harvests');
+    localStorage.removeItem('trinity_verd_smslogs');
+    localStorage.removeItem('trinity_verd_pricing');
+    localStorage.removeItem('trinity_verd_privacy_mode');
+
+    setFarmers(INITIAL_FARMERS);
+    setDistributions(INITIAL_DISTRIBUTIONS);
+    setHarvests(INITIAL_HARVESTS);
+    setSmsLogs(INITIAL_SMS_LOGS);
+    setPricing(INITIAL_PRICING);
+    setPrivacyMode(false);
+  };
+
+  const handleImportBackup = (imported: {
+    farmers?: Farmer[];
+    distributions?: SeedDistribution[];
+    harvests?: HarvestRecord[];
+    smsLogs?: SmsLog[];
+  }) => {
+    if (imported.farmers) setFarmers(imported.farmers);
+    if (imported.distributions) setDistributions(imported.distributions);
+    if (imported.harvests) setHarvests(imported.harvests);
+    if (imported.smsLogs) setSmsLogs(imported.smsLogs);
+  };
   
   // Farmers Handlers
   const handleAddFarmer = (f: Omit<Farmer, 'id' | 'registeredAt'>) => {
@@ -183,6 +221,7 @@ export default function App() {
             onAddFarmer={handleAddFarmer}
             onUpdateFarmer={handleUpdateFarmer}
             onDeleteFarmer={handleDeleteFarmer}
+            privacyMode={privacyMode}
           />
         );
       case 'seeds':
@@ -204,6 +243,7 @@ export default function App() {
             onAddHarvest={handleAddHarvest}
             onPayFarmer={handlePayFarmer}
             onAddSmsLog={handleAddSmsLog}
+            privacyMode={privacyMode}
           />
         );
       case 'sms':
@@ -214,6 +254,20 @@ export default function App() {
             pricing={pricing}
             onAddSmsLog={handleAddSmsLog}
             onClearLogs={handleClearLogs}
+            privacyMode={privacyMode}
+          />
+        );
+      case 'security':
+        return (
+          <SecurityCenter
+            farmers={farmers}
+            distributions={distributions}
+            harvests={harvests}
+            smsLogs={smsLogs}
+            privacyMode={privacyMode}
+            onTogglePrivacy={() => setPrivacyMode(prev => !prev)}
+            onRestoreBaseline={handleRestoreBaseline}
+            onImportBackup={handleImportBackup}
           />
         );
       default:
@@ -227,7 +281,8 @@ export default function App() {
     { id: 'farmers', label: 'Farmers Enrollment', icon: Users },
     { id: 'seeds', label: 'Seed Distribution', icon: Sprout },
     { id: 'buyer', label: 'Buyer & Payments', icon: ShoppingBag },
-    { id: 'sms', label: 'Bulk SMS Hub', icon: Send }
+    { id: 'sms', label: 'Bulk SMS Hub', icon: Send },
+    { id: 'security', label: 'Database & Backups', icon: Database }
   ];
 
   const activeLabel = navigationItems.find(i => i.id === activeTab)?.label || 'Overview';
@@ -369,7 +424,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <span>Dealers of Organic Castor Oil</span>
             <span>Kitui County Operations Board</span>
-            <span className="text-emerald-600">Secure AES Payouts</span>
+            <span className="text-emerald-600">Direct MPesa Payments</span>
           </div>
         </div>
       </footer>

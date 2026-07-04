@@ -10,6 +10,7 @@ interface BuyerDashboardProps {
   onAddHarvest: (harvest: Omit<HarvestRecord, 'id' | 'paymentStatus' | 'amountToPay' | 'totalKgs'>) => void;
   onPayFarmer: (id: string, mpesaTransId: string, paymentDate: string) => void;
   onAddSmsLog: (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => void;
+  privacyMode?: boolean;
 }
 
 export default function BuyerDashboard({
@@ -19,7 +20,8 @@ export default function BuyerDashboard({
   onUpdatePricing,
   onAddHarvest,
   onPayFarmer,
-  onAddSmsLog
+  onAddSmsLog,
+  privacyMode = false
 }: BuyerDashboardProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [activeTab, setActiveTab] = useState<'intake' | 'pricing' | 'leaderboard'>('intake');
@@ -41,12 +43,26 @@ export default function BuyerDashboard({
   const [currentMpesaStep, setCurrentMpesaStep] = useState(0);
   const [simulatedTransId, setSimulatedTransId] = useState('');
 
+  // Digital Receipt Modal state
+  const [viewingReceipt, setViewingReceipt] = useState<HarvestRecord | null>(null);
+
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   // Computive calculation preview
   const previewTotalKgs = cleanKgs + huskKgs;
   const previewAmountToPay = (cleanKgs * pricing.cleanSeedPerKg) + (huskKgs * pricing.husksSeedPerKg);
+
+  // Derived Receipt values
+  const receiptFarmer = viewingReceipt ? farmers.find(f => f.id === viewingReceipt.farmerId) : null;
+  const receiptPhone = receiptFarmer?.phone || '+2547XXXXXXXX';
+  const receiptId = receiptFarmer?.idNumber || 'XXXXXX';
+  const displayReceiptPhone = privacyMode 
+    ? receiptPhone.substring(0, 4) + ' *** *** ' + receiptPhone.substring(receiptPhone.length - 3)
+    : receiptPhone;
+  const displayReceiptId = privacyMode
+    ? receiptId.substring(0, 2) + '****' + receiptId.substring(receiptId.length - 2)
+    : receiptId;
 
   // Group harvest results by farmer ID for "Compete according to Kgs"
   const leaderboardData = React.useMemo(() => {
@@ -104,6 +120,9 @@ export default function BuyerDashboard({
     if (cleanKgs === 0 && huskKgs === 0) {
       return setErrorMsg('Either Clean Castor Seeds or Husks weight must exceed 0kg.');
     }
+    if (cleanKgs > 1000 || huskKgs > 1000) {
+      return setErrorMsg('Input Protection Warning: Castor weight intake cannot exceed 1,000 kg per individual delivery to prevent entry typos.');
+    }
 
     const linkedFarmer = farmers.find(f => f.id === selectedFarmerId);
     if (!linkedFarmer) {
@@ -148,13 +167,19 @@ export default function BuyerDashboard({
     const randomTrans = 'MPW' + Math.random().toString(36).substring(2, 9).toUpperCase();
     setSimulatedTransId(randomTrans);
 
+    const foundFarmer = farmers.find(f => f.id === record.farmerId);
+    const rawPhone = foundFarmer?.phone || '+254712345678';
+    const displayPhone = privacyMode 
+      ? rawPhone.substring(0, 4) + ' *** *** ' + rawPhone.substring(rawPhone.length - 3)
+      : rawPhone;
+
     const steps = [
-      'Establishing handshake with Safaricom MPesa G2 API gateway...',
-      `Validating mobile subscription ${record.farmerId === "FARM-101" ? "+254712345678" : "+254722987654"}...`,
-      `Querying funds availability in Trinity Verd Corporate B2C Wallet (Tilt account)...`,
-      `Executing B2C instant payout: KSh ${record.amountToPay.toLocaleString()} to ${record.farmerName}...`,
-      'Awaiting response call-back from Safaricom API...',
-      `Payout successfully processed! TransID: ${randomTrans}.`
+      'Connecting to Safaricom MPesa API Gateway...',
+      `Verifying subscriber status for ${displayPhone}...`,
+      'Checking corporate account balance...',
+      `Initiating B2C disbursement: KSh ${record.amountToPay.toLocaleString()} to ${record.farmerName}...`,
+      'Awaiting response confirmation from Safaricom...',
+      `Disbursement successful. SMS receipt dispatched. Transaction ID: ${randomTrans}.`
     ];
     setMpesaProgress(steps);
 
@@ -173,7 +198,7 @@ export default function BuyerDashboard({
           
           // Auto trigger corresponding confirmation SMS as requested by user
           onAddSmsLog({
-            recipientPhone: "+254712345678", // standard Kenya simulator
+            recipientPhone: rawPhone,
             recipientName: record.farmerName,
             message: `Habari ${record.farmerName}, Trinity Verd Limited imetuma malipo yako ya KSh ${record.amountToPay.toLocaleString()} kupitia MPESA. Trans ID: ${randomTrans}. Ahsante kwa kuuza Castor Seed Kitui.`
           });
@@ -585,9 +610,12 @@ export default function BuyerDashboard({
                               Pay Mpesa
                             </button>
                           ) : (
-                            <span className="text-xs text-slate-400 font-medium inline-flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-100">
-                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Locked Receipt
-                            </span>
+                            <button
+                              onClick={() => setViewingReceipt(h)}
+                              className="px-2.5 py-1 text-emerald-750 hover:bg-emerald-50 bg-emerald-50/50 border border-emerald-100 rounded-md text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5 transition-all"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> View Receipt
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -645,6 +673,126 @@ export default function BuyerDashboard({
               </div>
             </div>
             
+          </div>
+        </div>
+      )}
+
+      {/* Printable Castor Intake Delivery Note & Payment Voucher Modal */}
+      {viewingReceipt && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white text-slate-800 max-w-2xl w-full rounded-2xl p-6 shadow-2xl border border-slate-100 space-y-6 relative print:p-0 print:border-none print:shadow-none">
+            
+            {/* Header section with brand info */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-slate-100 gap-4">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-wide uppercase font-sans">
+                  TRINITY VERD LIMITED
+                </h3>
+                <p className="text-[10px] text-slate-500 font-mono">
+                  Dealers of Pure Castor Oil • Kitui County, Kenya
+                </p>
+              </div>
+              <div className="text-right sm:text-right">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-bold uppercase rounded-lg">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  Verified Payment Voucher
+                </span>
+              </div>
+            </div>
+
+            {/* Inner Printable Sheet container */}
+            <div className="space-y-4 text-xs font-sans print:m-0">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-mono font-bold uppercase">Grower Details</span>
+                  <strong className="text-sm text-slate-900">{viewingReceipt.farmerName}</strong>
+                  <span className="block mt-0.5 text-slate-500">Citizen ID: {displayReceiptId}</span>
+                  <span className="block text-slate-500">Phone: {displayReceiptPhone}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-mono font-bold uppercase">Location / Registry</span>
+                  <span className="block mt-0.5 text-slate-700 font-medium">Village: {receiptFarmer?.village || 'Unknown'}</span>
+                  <span className="block text-slate-500">Ward: {receiptFarmer?.ward || 'Unknown'}</span>
+                  <span className="block text-slate-500">Sub-county: {receiptFarmer?.subCounty || 'Unknown'}</span>
+                </div>
+              </div>
+
+              <div className="border border-slate-150 rounded-xl overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 text-[10px] text-slate-500 font-mono uppercase tracking-wider border-b border-slate-150">
+                    <tr>
+                      <th className="p-3">Castor Seed Composition</th>
+                      <th className="p-3 text-right">Net Weight</th>
+                      <th className="p-3 text-right">Buying Rate</th>
+                      <th className="p-3 text-right">Subtotal Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-150 text-slate-700">
+                    <tr>
+                      <td className="p-3 font-semibold text-emerald-850">Clean Castor Seeds</td>
+                      <td className="p-3 text-right font-mono">{viewingReceipt.cleanSeedKgs} Kgs</td>
+                      <td className="p-3 text-right font-mono font-semibold">KSh {pricing.cleanSeedPerKg}/Kg</td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-800">KSh {(viewingReceipt.cleanSeedKgs * pricing.cleanSeedPerKg).toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-semibold text-amber-800">Castor Seed Husks</td>
+                      <td className="p-3 text-right font-mono">{viewingReceipt.husksSeedKgs} Kgs</td>
+                      <td className="p-3 text-right font-mono font-semibold">KSh {pricing.husksSeedPerKg}/Kg</td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-800">KSh {(viewingReceipt.husksSeedKgs * pricing.husksSeedPerKg).toLocaleString()}</td>
+                    </tr>
+                    <tr className="bg-emerald-50/20 font-bold text-slate-900 border-t-2 border-slate-200">
+                      <td className="p-3 uppercase text-[10px] tracking-wider text-slate-500">Computive Totals</td>
+                      <td className="p-3 text-right font-mono text-slate-800">{viewingReceipt.totalKgs} Kgs</td>
+                      <td className="p-3"></td>
+                      <td className="p-3 text-right font-mono text-emerald-900 text-sm">KSh {viewingReceipt.amountToPay.toLocaleString()}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Audit Security Footer */}
+              <div className="p-4 bg-slate-900 text-slate-300 rounded-xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] font-mono">
+                <div className="space-y-1">
+                  <span className="text-[9px] text-slate-500 block font-bold uppercase">MPESA TRANSACTION DETAILS</span>
+                  <span className="block text-slate-200 font-semibold">Status: SUCCESSFUL (Direct B2C Payout)</span>
+                  <span className="block text-slate-400">MPesa Receipt No: {viewingReceipt.mpesaTransId}</span>
+                </div>
+                <div className="space-y-1 sm:text-right">
+                  <span className="text-[9px] text-slate-500 block font-bold uppercase">VOUCHER METADATA</span>
+                  <span className="block text-slate-400">Voucher Ref: TVL-REC-{viewingReceipt.id.split('-')[1]}</span>
+                  <span className="block text-slate-400">Date Issued: {viewingReceipt.paymentDate || viewingReceipt.dateSold}</span>
+                </div>
+              </div>
+
+              {/* Signature Block */}
+              <div className="pt-4 border-t border-dashed border-slate-200 grid grid-cols-2 gap-8 text-[11px] text-slate-500">
+                <div className="space-y-3">
+                  <div className="h-6 border-b border-slate-300"></div>
+                  <span className="block">Trinity Weighing Clerk Signature</span>
+                </div>
+                <div className="space-y-3 text-right">
+                  <div className="h-6 border-b border-slate-300"></div>
+                  <span className="block">Grower Acceptance Signature</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action operations buttons */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 print:hidden">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1.5 transition-colors"
+              >
+                Print Voucher / Save PDF
+              </button>
+              <button
+                onClick={() => setViewingReceipt(null)}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Close Receipt
+              </button>
+            </div>
+
           </div>
         </div>
       )}

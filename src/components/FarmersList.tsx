@@ -8,9 +8,10 @@ interface FarmersListProps {
   onAddFarmer: (farmer: Omit<Farmer, 'id' | 'registeredAt'>) => void;
   onUpdateFarmer: (farmer: Farmer) => void;
   onDeleteFarmer: (id: string) => void;
+  privacyMode?: boolean;
 }
 
-export default function FarmersList({ farmers, onAddFarmer, onUpdateFarmer, onDeleteFarmer }: FarmersListProps) {
+export default function FarmersList({ farmers, onAddFarmer, onUpdateFarmer, onDeleteFarmer, privacyMode = false }: FarmersListProps) {
   // Navigation tabs or toggle state
   const [isRegistering, setIsRegistering] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,6 +31,19 @@ export default function FarmersList({ farmers, onAddFarmer, onUpdateFarmer, onDe
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Privacy mask helper functions
+  const maskId = (id: string) => {
+    if (!privacyMode) return id;
+    if (id.length <= 4) return '***';
+    return `${id.substring(0, 2)}****${id.substring(id.length - 2)}`;
+  };
+
+  const maskPhone = (ph: string) => {
+    if (!privacyMode) return ph;
+    if (ph.length <= 6) return ph;
+    return `${ph.substring(0, 4)} *** *** ${ph.substring(ph.length - 3)}`;
+  };
+
   // Handle sub county selection change & update ward lists
   const handleSubCountyChange = (sc: string) => {
     setSubCounty(sc);
@@ -45,46 +59,80 @@ export default function FarmersList({ farmers, onAddFarmer, onUpdateFarmer, onDe
     setFormError('');
     setSuccessMessage('');
 
-    // Essential validation
-    if (!fullName.trim()) return setFormError('Farmer names are required.');
-    if (!idNumber.trim() || idNumber.length < 6) return setFormError('Please enter a valid National ID number.');
-    if (!phone.trim()) return setFormError('Phone number is required.');
-    if (!village.trim()) return setFormError('Village of origin is required.');
-
-    // Simple Kenyan phone format helper (+2547... or 07...)
-    let formattedPhone = phone.trim();
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '+254' + formattedPhone.substring(1);
-    } else if (!formattedPhone.startsWith('+')) {
-      formattedPhone = '+' + formattedPhone;
+    // 1. Name validation (Must contain at least 2 words)
+    const trimmedName = fullName.trim();
+    if (!trimmedName) return setFormError('Farmer names are required.');
+    
+    const nameParts = trimmedName.split(/\s+/);
+    if (nameParts.length < 2) {
+      return setFormError('Please enter at least two full official names (First name & Surname).');
     }
+
+    // 2. National ID validation (Numeric digits, 6 to 10 chars)
+    const trimmedId = idNumber.trim();
+    if (!trimmedId) return setFormError('National ID number is required.');
+    if (!/^\d{6,10}$/.test(trimmedId)) {
+      return setFormError('Please enter a valid National ID containing only digits (6 to 10 digits).');
+    }
+
+    // 3. National ID Uniqueness validation (prevent financial payment fraud)
+    const isDuplicate = farmers.some(f => 
+      f.idNumber === trimmedId && (!editingFarmer || f.id !== editingFarmer.id)
+    );
+    if (isDuplicate) {
+      return setFormError(`Duplication alert: National ID "${trimmedId}" is already registered in the Kitui database.`);
+    }
+
+    // 4. Phone number validation & formatting
+    const trimmedPhone = phone.trim();
+    if (!trimmedPhone) return setFormError('Phone number is required.');
+    
+    // Strip everything except numbers and '+' sign
+    let digitsOnly = trimmedPhone.replace(/[^\d+]/g, '');
+    
+    if (digitsOnly.startsWith('0')) {
+      digitsOnly = '+254' + digitsOnly.substring(1);
+    } else if (digitsOnly.startsWith('7') || digitsOnly.startsWith('1')) {
+      digitsOnly = '+254' + digitsOnly;
+    } else if (digitsOnly.startsWith('254')) {
+      digitsOnly = '+' + digitsOnly;
+    } else if (!digitsOnly.startsWith('+')) {
+      digitsOnly = '+254' + digitsOnly;
+    }
+
+    // Check final format length (should be around 13 characters like +254XXXXXXXXX)
+    if (!/^\+254(7|1)\d{8}$/.test(digitsOnly)) {
+      return setFormError('Please enter a valid Kenyan mobile number (e.g. 07XXXXXXXX or 01XXXXXXXX).');
+    }
+
+    if (!village.trim()) return setFormError('Village of origin is required.');
 
     if (editingFarmer) {
       // Edit mode
       onUpdateFarmer({
         ...editingFarmer,
-        fullName: fullName.trim(),
-        idNumber: idNumber.trim(),
-        phone: formattedPhone,
+        fullName: trimmedName,
+        idNumber: trimmedId,
+        phone: digitsOnly,
         village: village.trim(),
         subCounty,
         ward,
         county
       });
-      setSuccessMessage(`Farmer details updated successfully for ${fullName}`);
+      setSuccessMessage(`Farmer details updated successfully for ${trimmedName}`);
       setEditingFarmer(null);
     } else {
       // Add mode
       onAddFarmer({
-        fullName: fullName.trim(),
-        idNumber: idNumber.trim(),
-        phone: formattedPhone,
+        fullName: trimmedName,
+        idNumber: trimmedId,
+        phone: digitsOnly,
         village: village.trim(),
         subCounty,
         ward,
         county
       });
-      setSuccessMessage(`New farmer registered successfully: ${fullName}`);
+      setSuccessMessage(`New farmer registered successfully: ${trimmedName}`);
     }
 
     // Reset Form
@@ -365,14 +413,14 @@ export default function FarmersList({ farmers, onAddFarmer, onUpdateFarmer, onDe
                             </div>
                             <div>
                               <div className="font-semibold text-slate-900 text-sm">{farmer.fullName}</div>
-                              <div className="text-xs text-slate-400 font-mono">ID: {farmer.idNumber} | CID: {farmer.id}</div>
+                              <div className="text-xs text-slate-400 font-mono">ID: {maskId(farmer.idNumber)} | CID: {farmer.id}</div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 text-slate-700 text-xs">
                             <Phone className="h-3 w-3 text-slate-400" />
-                            <span className="font-mono">{farmer.phone}</span>
+                            <span className="font-mono">{maskPhone(farmer.phone)}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
