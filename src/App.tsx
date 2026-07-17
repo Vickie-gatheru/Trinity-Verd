@@ -1,12 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { Farmer, SeedDistribution, HarvestRecord, SmsLog, PricingRates } from './types';
+import { INITIAL_PRICING } from './sampleData';
+import { onSnapshot } from 'firebase/firestore';
+import { 
+  bootstrapDatabaseIfEmpty,
+  farmersCol,
+  distributionsCol,
+  harvestsCol,
+  smsLogsCol,
+  pricingDocRef,
+  dbAddFarmer,
+  dbUpdateFarmer,
+  dbDeleteFarmer,
+  dbAddDistribution,
+  dbDeleteDistribution,
+  dbAddHarvest,
+  dbUpdateHarvest,
+  dbUpdatePricing,
+  dbAddSmsLog,
+  dbClearSmsLogs,
+  dbResetToBaseline,
+  handleFirestoreError,
+  OperationType
+} from './firebase';
+
+import { isSupabaseConfigured } from './supabase';
 import {
-  INITIAL_FARMERS,
-  INITIAL_DISTRIBUTIONS,
-  INITIAL_HARVESTS,
-  INITIAL_SMS_LOGS,
-  INITIAL_PRICING
-} from './sampleData';
+  sbGetFarmers,
+  sbAddFarmer,
+  sbUpdateFarmer,
+  sbDeleteFarmer,
+  sbGetDistributions,
+  sbAddDistribution,
+  sbDeleteDistribution,
+  sbGetHarvests,
+  sbAddHarvest,
+  sbUpdateHarvest,
+  sbGetSmsLogs,
+  sbAddSmsLog,
+  sbClearSmsLogs,
+  sbGetPricing,
+  sbUpdatePricing,
+  sbResetToBaseline,
+  sbSubscribeAll
+} from './supabaseDb';
 
 // Sub-components import
 import Overview from './components/Overview';
@@ -17,39 +54,26 @@ import BulkSms from './components/BulkSms';
 import SecurityCenter from './components/SecurityCenter';
 
 // Icons for navigation sidebar/topbar
-import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X, ShieldCheck, Database } from 'lucide-react';
+import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X, ShieldCheck, Database, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  // --- Persistent Storage State Initializers ---
-  const [farmers, setFarmers] = useState<Farmer[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_farmers');
-    return saved ? JSON.parse(saved) : INITIAL_FARMERS;
+  // --- Connection Configuration ---
+  const [dbProvider, setDbProvider] = useState<'firebase' | 'supabase'>(() => {
+    const saved = localStorage.getItem('trinity_verd_db_provider');
+    return (saved === 'supabase' || saved === 'firebase') ? saved : 'firebase';
   });
 
-  const [distributions, setDistributions] = useState<SeedDistribution[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_distributions');
-    return saved ? JSON.parse(saved) : INITIAL_DISTRIBUTIONS;
-  });
-
-  const [harvests, setHarvests] = useState<HarvestRecord[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_harvests');
-    return saved ? JSON.parse(saved) : INITIAL_HARVESTS;
-  });
-
-  const [smsLogs, setSmsLogs] = useState<SmsLog[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_smslogs');
-    return saved ? JSON.parse(saved) : INITIAL_SMS_LOGS;
-  });
-
-  const [pricing, setPricing] = useState<PricingRates>(() => {
-    const saved = localStorage.getItem('trinity_verd_pricing');
-    return saved ? JSON.parse(saved) : INITIAL_PRICING;
-  });
-
+  // --- Core Data State Holders ---
+  const [farmers, setFarmers] = useState<Farmer[]>([]);
+  const [distributions, setDistributions] = useState<SeedDistribution[]>([]);
+  const [harvests, setHarvests] = useState<HarvestRecord[]>([]);
+  const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
+  const [pricing, setPricing] = useState<PricingRates>(INITIAL_PRICING);
   const [privacyMode, setPrivacyMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('trinity_verd_privacy_mode');
     return saved === 'true';
   });
+  const [loading, setLoading] = useState<boolean>(true);
 
   // --- Active Module switching ---
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -57,96 +81,291 @@ export default function App() {
   // Mobile drawer toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // --- Sync State back to LocalStorage ---
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_farmers', JSON.stringify(farmers));
-  }, [farmers]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_distributions', JSON.stringify(distributions));
-  }, [distributions]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_harvests', JSON.stringify(harvests));
-  }, [harvests]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_smslogs', JSON.stringify(smsLogs));
-  }, [smsLogs]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_pricing', JSON.stringify(pricing));
-  }, [pricing]);
-
+  // Sync privacy mode settings back to LocalStorage
   useEffect(() => {
     localStorage.setItem('trinity_verd_privacy_mode', String(privacyMode));
   }, [privacyMode]);
 
-  // --- Action Handlers ---
+  // Real-time synchronization listeners for either Firestore or Supabase
+  useEffect(() => {
+    setLoading(true);
 
-  const handleRestoreBaseline = () => {
-    localStorage.removeItem('trinity_verd_farmers');
-    localStorage.removeItem('trinity_verd_distributions');
-    localStorage.removeItem('trinity_verd_harvests');
-    localStorage.removeItem('trinity_verd_smslogs');
-    localStorage.removeItem('trinity_verd_pricing');
-    localStorage.removeItem('trinity_verd_privacy_mode');
+    if (dbProvider === 'supabase') {
+      const loadSupabaseData = async () => {
+        try {
+          const [f, d, h, s, p] = await Promise.all([
+            sbGetFarmers(),
+            sbGetDistributions(),
+            sbGetHarvests(),
+            sbGetSmsLogs(),
+            sbGetPricing()
+          ]);
+          setFarmers(f);
+          setDistributions(d);
+          setHarvests(h);
+          setSmsLogs(s);
+          setPricing(p);
+          setLoading(false);
+        } catch (error) {
+          console.error("Failed to load data from Supabase:", error);
+          setLoading(false);
+        }
+      };
 
-    setFarmers(INITIAL_FARMERS);
-    setDistributions(INITIAL_DISTRIBUTIONS);
-    setHarvests(INITIAL_HARVESTS);
-    setSmsLogs(INITIAL_SMS_LOGS);
-    setPricing(INITIAL_PRICING);
-    setPrivacyMode(false);
+      loadSupabaseData();
+
+      // Subscribe to real-time changes
+      const unsub = sbSubscribeAll(() => {
+        loadSupabaseData();
+      });
+
+      return () => {
+        unsub();
+      };
+    } else {
+      // --- Firestore Setup & Connection Sync ---
+      let unsubFarmers: (() => void) | undefined;
+      let unsubDistributions: (() => void) | undefined;
+      let unsubHarvests: (() => void) | undefined;
+      let unsubSms: (() => void) | undefined;
+      let unsubPricing: (() => void) | undefined;
+
+      bootstrapDatabaseIfEmpty().then(() => {
+        // 1. Listen to farmers
+        unsubFarmers = onSnapshot(farmersCol, (snapshot) => {
+          const list: Farmer[] = [];
+          snapshot.forEach((doc) => {
+            list.push(doc.data() as Farmer);
+          });
+          list.sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
+          setFarmers(list);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'farmers');
+        });
+
+        // 2. Listen to distributions
+        unsubDistributions = onSnapshot(distributionsCol, (snapshot) => {
+          const list: SeedDistribution[] = [];
+          snapshot.forEach((doc) => {
+            list.push(doc.data() as SeedDistribution);
+          });
+          list.sort((a, b) => b.dateOffered.localeCompare(a.dateOffered));
+          setDistributions(list);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'distributions');
+        });
+
+        // 3. Listen to harvests
+        unsubHarvests = onSnapshot(harvestsCol, (snapshot) => {
+          const list: HarvestRecord[] = [];
+          snapshot.forEach((doc) => {
+            list.push(doc.data() as HarvestRecord);
+          });
+          list.sort((a, b) => b.dateSold.localeCompare(a.dateSold));
+          setHarvests(list);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'harvests');
+        });
+
+        // 4. Listen to smsLogs
+        unsubSms = onSnapshot(smsLogsCol, (snapshot) => {
+          const list: SmsLog[] = [];
+          snapshot.forEach((doc) => {
+            list.push(doc.data() as SmsLog);
+          });
+          list.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+          setSmsLogs(list);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'smsLogs');
+        });
+
+        // 5. Listen to pricing rates configuration
+        unsubPricing = onSnapshot(pricingDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setPricing(docSnap.data() as PricingRates);
+          }
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, 'config/rates');
+        });
+
+        setLoading(false);
+      }).catch(err => {
+        console.error("Firestore database initialization failed:", err);
+        setLoading(false);
+      });
+
+      return () => {
+        if (unsubFarmers) unsubFarmers();
+        if (unsubDistributions) unsubDistributions();
+        if (unsubHarvests) unsubHarvests();
+        if (unsubSms) unsubSms();
+        if (unsubPricing) unsubPricing();
+      };
+    }
+  }, [dbProvider]);
+
+  // --- Action Handlers mapping to Cloud Database ---
+
+  const handleRestoreBaseline = async () => {
+    setLoading(true);
+    try {
+      if (dbProvider === 'supabase') {
+        await sbResetToBaseline();
+        const [f, d, h, s, p] = await Promise.all([
+          sbGetFarmers(),
+          sbGetDistributions(),
+          sbGetHarvests(),
+          sbGetSmsLogs(),
+          sbGetPricing()
+        ]);
+        setFarmers(f);
+        setDistributions(d);
+        setHarvests(h);
+        setSmsLogs(s);
+        setPricing(p);
+      } else {
+        await dbResetToBaseline();
+      }
+      setPrivacyMode(false);
+    } catch (err) {
+      console.error("Error resetting database:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleImportBackup = (imported: {
+  const handleImportBackup = async (imported: {
     farmers?: Farmer[];
     distributions?: SeedDistribution[];
     harvests?: HarvestRecord[];
     smsLogs?: SmsLog[];
   }) => {
-    if (imported.farmers) setFarmers(imported.farmers);
-    if (imported.distributions) setDistributions(imported.distributions);
-    if (imported.harvests) setHarvests(imported.harvests);
-    if (imported.smsLogs) setSmsLogs(imported.smsLogs);
+    setLoading(true);
+    try {
+      if (dbProvider === 'supabase') {
+        if (imported.farmers) {
+          for (const f of imported.farmers) {
+            await sbAddFarmer(f);
+          }
+        }
+        if (imported.distributions) {
+          for (const d of imported.distributions) {
+            await sbAddDistribution(d);
+          }
+        }
+        if (imported.harvests) {
+          for (const h of imported.harvests) {
+            await sbAddHarvest(h);
+          }
+        }
+        if (imported.smsLogs) {
+          for (const sms of imported.smsLogs) {
+            await sbAddSmsLog(sms);
+          }
+        }
+        const [f, d, h, s] = await Promise.all([
+          sbGetFarmers(),
+          sbGetDistributions(),
+          sbGetHarvests(),
+          sbGetSmsLogs()
+        ]);
+        setFarmers(f);
+        setDistributions(d);
+        setHarvests(h);
+        setSmsLogs(s);
+      } else {
+        if (imported.farmers) {
+          for (const f of imported.farmers) {
+            await dbAddFarmer(f);
+          }
+        }
+        if (imported.distributions) {
+          for (const d of imported.distributions) {
+            await dbAddDistribution(d);
+          }
+        }
+        if (imported.harvests) {
+          for (const h of imported.harvests) {
+            await dbAddHarvest(h);
+          }
+        }
+        if (imported.smsLogs) {
+          for (const sms of imported.smsLogs) {
+            await dbAddSmsLog(sms);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error importing data backup:", err);
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Farmers Handlers
-  const handleAddFarmer = (f: Omit<Farmer, 'id' | 'registeredAt'>) => {
+  const handleAddFarmer = async (f: Omit<Farmer, 'id' | 'registeredAt'>) => {
     const newFarmerId = `FARM-${Date.now().toString().substring(7)}`;
     const newFarmer: Farmer = {
       ...f,
       id: newFarmerId,
       registeredAt: new Date().toISOString().split('T')[0]
     };
-    setFarmers(prev => [newFarmer, ...prev]);
+    if (dbProvider === 'supabase') {
+      await sbAddFarmer(newFarmer);
+      const list = await sbGetFarmers();
+      setFarmers(list);
+    } else {
+      await dbAddFarmer(newFarmer);
+    }
   };
 
-  const handleUpdateFarmer = (updated: Farmer) => {
-    setFarmers(prev => prev.map(f => f.id === updated.id ? updated : f));
+  const handleUpdateFarmer = async (updated: Farmer) => {
+    if (dbProvider === 'supabase') {
+      await sbUpdateFarmer(updated);
+      const list = await sbGetFarmers();
+      setFarmers(list);
+    } else {
+      await dbUpdateFarmer(updated);
+    }
   };
 
-  const handleDeleteFarmer = (id: string) => {
-    setFarmers(prev => prev.filter(f => f.id !== id));
-    // cascade deletion safely on related logs optionally, or keep history
+  const handleDeleteFarmer = async (id: string) => {
+    if (dbProvider === 'supabase') {
+      await sbDeleteFarmer(id);
+      const list = await sbGetFarmers();
+      setFarmers(list);
+    } else {
+      await dbDeleteFarmer(id);
+    }
   };
 
   // Seed Distribution Handlers
-  const handleAddDistribution = (d: Omit<SeedDistribution, 'id'>) => {
+  const handleAddDistribution = async (d: Omit<SeedDistribution, 'id'>) => {
     const newDist: SeedDistribution = {
       ...d,
       id: `DIST-${Date.now().toString().substring(7)}`
     };
-    setDistributions(prev => [newDist, ...prev]);
+    if (dbProvider === 'supabase') {
+      await sbAddDistribution(newDist);
+      const list = await sbGetDistributions();
+      setDistributions(list);
+    } else {
+      await dbAddDistribution(newDist);
+    }
   };
 
-  const handleDeleteDistribution = (id: string) => {
-    setDistributions(prev => prev.filter(item => item.id !== id));
+  const handleDeleteDistribution = async (id: string) => {
+    if (dbProvider === 'supabase') {
+      await sbDeleteDistribution(id);
+      const list = await sbGetDistributions();
+      setDistributions(list);
+    } else {
+      await dbDeleteDistribution(id);
+    }
   };
 
   // Harvest Intakes Handlers
-  const handleAddHarvest = (h: Omit<HarvestRecord, 'id' | 'paymentStatus' | 'amountToPay' | 'totalKgs'>) => {
+  const handleAddHarvest = async (h: Omit<HarvestRecord, 'id' | 'paymentStatus' | 'amountToPay' | 'totalKgs'>) => {
     const standardAmount = (h.cleanSeedKgs * pricing.cleanSeedPerKg) + (h.husksSeedKgs * pricing.husksSeedPerKg);
     const totalW = h.cleanSeedKgs + h.husksSeedKgs;
     const newHarvest: HarvestRecord = {
@@ -156,32 +375,48 @@ export default function App() {
       amountToPay: standardAmount,
       paymentStatus: 'Pending'
     };
-    setHarvests(prev => [newHarvest, ...prev]);
+    if (dbProvider === 'supabase') {
+      await sbAddHarvest(newHarvest);
+      const list = await sbGetHarvests();
+      setHarvests(list);
+    } else {
+      await dbAddHarvest(newHarvest);
+    }
   };
 
-  const handlePayFarmer = (harvestId: string, transId: string, timestamp: string) => {
-    setHarvests(prev => prev.map(item => {
-      if (item.id === harvestId) {
-        return {
-          ...item,
-          paymentStatus: 'Paid',
-          mpesaTransId: transId,
-          paymentDate: timestamp
-        };
+  const handlePayFarmer = async (harvestId: string, transId: string, timestamp: string) => {
+    const record = harvests.find(h => h.id === harvestId);
+    if (record) {
+      const updated: HarvestRecord = {
+        ...record,
+        paymentStatus: 'Paid',
+        mpesaTransId: transId,
+        paymentDate: timestamp
+      };
+      if (dbProvider === 'supabase') {
+        await sbUpdateHarvest(updated);
+        const list = await sbGetHarvests();
+        setHarvests(list);
+      } else {
+        await dbUpdateHarvest(updated);
       }
-      return item;
-    }));
+    }
   };
 
   // Pricing Configuration Setting Handlers
-  const handleUpdatePricing = (newPricing: PricingRates) => {
-    setPricing(newPricing);
+  const handleUpdatePricing = async (newPricing: PricingRates) => {
+    if (dbProvider === 'supabase') {
+      await sbUpdatePricing(newPricing);
+      const list = await sbGetPricing();
+      setPricing(list);
+    } else {
+      await dbUpdatePricing(newPricing);
+    }
   };
 
   // Bulk SMS Handlers
-  const handleAddSmsLog = (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => {
+  const handleAddSmsLog = async (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => {
     const currentLocal = new Date();
-    // format as YYYY-MM-DD HH:MM
     const dateStr = currentLocal.toISOString().split('T')[0];
     const timeStr = currentLocal.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     
@@ -191,12 +426,24 @@ export default function App() {
       sentAt: `${dateStr} ${timeStr}`,
       status: 'Delivered'
     };
-    setSmsLogs(prev => [newLog, ...prev]);
+    if (dbProvider === 'supabase') {
+      await sbAddSmsLog(newLog);
+      const list = await sbGetSmsLogs();
+      setSmsLogs(list);
+    } else {
+      await dbAddSmsLog(newLog);
+    }
   };
 
-  const handleClearLogs = () => {
-    setSmsLogs([]);
+  const handleClearLogs = async () => {
+    if (dbProvider === 'supabase') {
+      await sbClearSmsLogs();
+      setSmsLogs([]);
+    } else {
+      await dbClearSmsLogs();
+    }
   };
+
 
   // Dynamic tab routing render helper
   const renderTabContent = () => {
@@ -268,6 +515,11 @@ export default function App() {
             onTogglePrivacy={() => setPrivacyMode(prev => !prev)}
             onRestoreBaseline={handleRestoreBaseline}
             onImportBackup={handleImportBackup}
+            dbProvider={dbProvider}
+            onSetDbProvider={(provider) => {
+              setDbProvider(provider);
+              localStorage.setItem('trinity_verd_db_provider', provider);
+            }}
           />
         );
       default:
@@ -286,6 +538,28 @@ export default function App() {
   ];
 
   const activeLabel = navigationItems.find(i => i.id === activeTab)?.label || 'Overview';
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50/50 flex flex-col items-center justify-center p-6 text-slate-800 font-sans">
+        <div className="max-w-md w-full bg-white border border-slate-100 rounded-2xl p-8 shadow-xs text-center flex flex-col items-center gap-6">
+          <div className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl animate-pulse">
+            <Database className="h-10 w-10" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-bold font-sans text-slate-900">Synchronizing with Cloud</h1>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Establishing a real-time secure connection to the Trinity Verd cloud database. Loading enrollment directories, distribution logs, and active market rates...
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50/60 border border-emerald-100/60 rounded-xl px-4 py-2">
+            <RefreshCw className="h-4.5 w-4.5 animate-spin" />
+            Connecting to Firestore...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans text-slate-800 antialiased selection:bg-emerald-700/10 selection:text-emerald-800">

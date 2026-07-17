@@ -16,6 +16,8 @@ interface SecurityCenterProps {
     harvests?: HarvestRecord[];
     smsLogs?: SmsLog[];
   }) => void;
+  dbProvider: 'firebase' | 'supabase';
+  onSetDbProvider: (provider: 'firebase' | 'supabase') => void;
 }
 
 export default function SecurityCenter({
@@ -26,7 +28,9 @@ export default function SecurityCenter({
   privacyMode,
   onTogglePrivacy,
   onRestoreBaseline,
-  onImportBackup
+  onImportBackup,
+  dbProvider,
+  onSetDbProvider
 }: SecurityCenterProps) {
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
@@ -243,10 +247,92 @@ export default function SecurityCenter({
               Database & Backup Administration
             </h2>
             <p className="text-xs text-slate-500">
-              Manage client-side storage files, download system backups, and toggle privacy confidentiality masks for Kitui field offices.
+              Manage database engines, download secure backups, check data integrity, and toggle privacy masking for the Kitui operations team.
             </p>
           </div>
         </div>
+      </div>
+
+      {/* CLOUD DATABASE CONFIGURATION CENTER */}
+      <div className="bg-white border border-slate-100 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-50">
+          <div>
+            <h4 className="font-bold text-slate-900 text-sm font-sans flex items-center gap-1.5">
+              <Database className="h-4.5 w-4.5 text-emerald-700" />
+              Cloud Database Configuration Center
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              Select your active backend storage engine. You can seamlessly switch between Google Firebase and Supabase in real-time.
+            </p>
+          </div>
+          <span className="text-[10px] bg-slate-100 text-slate-800 font-bold px-2.5 py-1 rounded font-mono uppercase">
+            Active: {dbProvider === 'firebase' ? 'Firebase Firestore' : 'Supabase (SQL)'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* FIREBASE OPTION */}
+          <button
+            onClick={() => onSetDbProvider('firebase')}
+            className={`p-4 border rounded-xl text-left transition-all relative flex flex-col justify-between gap-3 cursor-pointer ${dbProvider === 'firebase' ? 'bg-emerald-50/50 border-emerald-500 shadow-xs' : 'bg-white border-slate-100 hover:border-slate-300'}`}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-900">Google Cloud Firestore</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${dbProvider === 'firebase' ? 'bg-emerald-600 text-white animate-pulse' : 'bg-slate-100 text-slate-500'}`}>
+                  {dbProvider === 'firebase' ? 'Active' : 'Offline'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Native document-store database pre-provisioned for this AI Studio environment. Includes automatic offline persistence.
+              </p>
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 mt-2">
+              Default AI Studio Integration
+            </div>
+          </button>
+
+          {/* SUPABASE OPTION */}
+          <button
+            onClick={() => onSetDbProvider('supabase')}
+            className={`p-4 border rounded-xl text-left transition-all relative flex flex-col justify-between gap-3 cursor-pointer ${dbProvider === 'supabase' ? 'bg-emerald-50/50 border-emerald-500 shadow-xs' : 'bg-white border-slate-100 hover:border-slate-300'}`}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-900">Supabase (PostgreSQL)</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${dbProvider === 'supabase' ? 'bg-emerald-600 text-white animate-pulse' : 'bg-slate-100 text-slate-500'}`}>
+                  {dbProvider === 'supabase' ? 'Active' : 'Standby'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Relational SQL database. Best choice for migrating to standard web platforms like GitHub, Vercel, or Netlify.
+              </p>
+            </div>
+            <div className="text-[10px] font-mono text-emerald-800 bg-emerald-50 font-bold px-2 py-0.5 rounded self-start">
+              Recommended for Export & GitHub
+            </div>
+          </button>
+        </div>
+
+        {dbProvider === 'supabase' && (
+          <div className="bg-amber-50/70 border border-amber-200/60 text-amber-900 p-4 rounded-xl space-y-2 text-xs">
+            <h5 className="font-bold flex items-center gap-1.5 text-amber-950">
+              <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
+              How to complete Supabase Setup for Exported Code
+            </h5>
+            <ol className="list-decimal pl-5 space-y-1 text-slate-700 text-[11px] leading-relaxed">
+              <li>
+                Create a project on your <a href="https://supabase.com" target="_blank" rel="noreferrer" className="underline font-bold text-emerald-800 hover:text-emerald-950">Supabase Dashboard</a>.
+              </li>
+              <li>
+                Open the **SQL Editor** in Supabase and paste the contents of the <code>supabase_schema.sql</code> file (located at the root of your export). Click **Run** to build tables and seed baseline data.
+              </li>
+              <li>
+                Create a <code>.env</code> file in your local workspace based on <code>.env.example</code>, and enter your <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>.
+              </li>
+            </ol>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

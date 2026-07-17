@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "Farmer": {
+      "title": "Farmer",
+      "description": "Information about a registered castor seed farmer in Kitui",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "idNumber": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "village": { "type": "string" },
+        "ward": { "type": "string" },
+        "subCounty": { "type": "string" },
+        "county": { "type": "string" },
+        "registeredAt": { "type": "string" }
+      },
+      "required": ["id", "idNumber", "fullName", "phone", "village", "ward", "subCounty", "county", "registeredAt"]
+    },
+    "SeedDistribution": {
+      "title": "SeedDistribution",
+      "description": "A record of seeds distributed to a farmer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "sacksGiven": { "type": "number" },
+        "kgsOffered": { "type": "number" },
+        "dateOffered": { "type": "string" },
+        "isRegisteredOnPortal": { "type": "boolean" }
+      },
+      "required": ["id", "farmerId", "farmerName", "sacksGiven", "kgsOffered", "dateOffered", "isRegisteredOnPortal"]
+    },
+    "HarvestRecord": {
+      "title": "HarvestRecord",
+      "description": "An intake transaction representing bought seeds",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "cleanSeedKgs": { "type": "number" },
+        "husksSeedKgs": { "type": "number" },
+        "totalKgs": { "type": "number" },
+        "amountToPay": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "mpesaTransId": { "type": "string" },
+        "dateSold": { "type": "string" }
+      },
+      "required": ["id", "farmerId", "farmerName", "cleanSeedKgs", "husksSeedKgs", "totalKgs", "amountToPay", "paymentStatus", "dateSold"]
+    },
+    "SmsLog": {
+      "title": "SmsLog",
+      "description": "Log of SMS dispatches",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientPhone": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "message": { "type": "string" },
+        "sentAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "recipientPhone", "recipientName", "message", "sentAt", "status"]
+    },
+    "PricingRates": {
+      "title": "PricingRates",
+      "description": "Active buying prices for clean seed and husk seed",
+      "type": "object",
+      "properties": {
+        "cleanSeedPerKg": { "type": "number" },
+        "husksSeedPerKg": { "type": "number" }
+      },
+      "required": ["cleanSeedPerKg", "husksSeedPerKg"]
+    }
+  },
+  "firestore": {
+    "farmers": {
+      "schema": { "$ref": "#/entities/Farmer" },
+      "description": "Directory of registered farmers"
+    },
+    "distributions": {
+      "schema": { "$ref": "#/entities/SeedDistribution" },
+      "description": "Records of distributed castor seeds"
+    },
+    "harvests": {
+      "schema": { "$ref": "#/entities/HarvestRecord" },
+      "description": "Intakes of castor seed harvests and payments"
+    },
+    "smsLogs": {
+      "schema": { "$ref": "#/entities/SmsLog" },
+      "description": "SMS dispatch audit logs"
+    },
+    "config": {
+      "schema": { "$ref": "#/entities/PricingRates" },
+      "description": "Configuration singletons like active pricing rates"
+    }
+  }
+}
