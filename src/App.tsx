@@ -1,28 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Farmer, SeedDistribution, HarvestRecord, SmsLog, PricingRates } from './types';
 import { INITIAL_PRICING } from './sampleData';
-import { onSnapshot } from 'firebase/firestore';
-import { 
-  bootstrapDatabaseIfEmpty,
-  farmersCol,
-  distributionsCol,
-  harvestsCol,
-  smsLogsCol,
-  pricingDocRef,
-  dbAddFarmer,
-  dbUpdateFarmer,
-  dbDeleteFarmer,
-  dbAddDistribution,
-  dbDeleteDistribution,
-  dbAddHarvest,
-  dbUpdateHarvest,
-  dbUpdatePricing,
-  dbAddSmsLog,
-  dbClearSmsLogs,
-  dbResetToBaseline,
-  handleFirestoreError,
-  OperationType
-} from './firebase';
 
 import { isSupabaseConfigured } from './supabase';
 import {
@@ -57,12 +35,6 @@ import SecurityCenter from './components/SecurityCenter';
 import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X, ShieldCheck, Database, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  // --- Connection Configuration ---
-  const [dbProvider, setDbProvider] = useState<'firebase' | 'supabase'>(() => {
-    const saved = localStorage.getItem('trinity_verd_db_provider');
-    return (saved === 'supabase' || saved === 'firebase') ? saved : 'firebase';
-  });
-
   // --- Core Data State Holders ---
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [distributions, setDistributions] = useState<SeedDistribution[]>([]);
@@ -86,131 +58,12 @@ export default function App() {
     localStorage.setItem('trinity_verd_privacy_mode', String(privacyMode));
   }, [privacyMode]);
 
-  // Real-time synchronization listeners for either Firestore or Supabase
+  // Real-time synchronization listeners for Supabase
   useEffect(() => {
     setLoading(true);
 
-    if (dbProvider === 'supabase') {
-      const loadSupabaseData = async () => {
-        try {
-          const [f, d, h, s, p] = await Promise.all([
-            sbGetFarmers(),
-            sbGetDistributions(),
-            sbGetHarvests(),
-            sbGetSmsLogs(),
-            sbGetPricing()
-          ]);
-          setFarmers(f);
-          setDistributions(d);
-          setHarvests(h);
-          setSmsLogs(s);
-          setPricing(p);
-          setLoading(false);
-        } catch (error) {
-          console.error("Failed to load data from Supabase:", error);
-          setLoading(false);
-        }
-      };
-
-      loadSupabaseData();
-
-      // Subscribe to real-time changes
-      const unsub = sbSubscribeAll(() => {
-        loadSupabaseData();
-      });
-
-      return () => {
-        unsub();
-      };
-    } else {
-      // --- Firestore Setup & Connection Sync ---
-      let unsubFarmers: (() => void) | undefined;
-      let unsubDistributions: (() => void) | undefined;
-      let unsubHarvests: (() => void) | undefined;
-      let unsubSms: (() => void) | undefined;
-      let unsubPricing: (() => void) | undefined;
-
-      bootstrapDatabaseIfEmpty().then(() => {
-        // 1. Listen to farmers
-        unsubFarmers = onSnapshot(farmersCol, (snapshot) => {
-          const list: Farmer[] = [];
-          snapshot.forEach((doc) => {
-            list.push(doc.data() as Farmer);
-          });
-          list.sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
-          setFarmers(list);
-        }, (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'farmers');
-        });
-
-        // 2. Listen to distributions
-        unsubDistributions = onSnapshot(distributionsCol, (snapshot) => {
-          const list: SeedDistribution[] = [];
-          snapshot.forEach((doc) => {
-            list.push(doc.data() as SeedDistribution);
-          });
-          list.sort((a, b) => b.dateOffered.localeCompare(a.dateOffered));
-          setDistributions(list);
-        }, (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'distributions');
-        });
-
-        // 3. Listen to harvests
-        unsubHarvests = onSnapshot(harvestsCol, (snapshot) => {
-          const list: HarvestRecord[] = [];
-          snapshot.forEach((doc) => {
-            list.push(doc.data() as HarvestRecord);
-          });
-          list.sort((a, b) => b.dateSold.localeCompare(a.dateSold));
-          setHarvests(list);
-        }, (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'harvests');
-        });
-
-        // 4. Listen to smsLogs
-        unsubSms = onSnapshot(smsLogsCol, (snapshot) => {
-          const list: SmsLog[] = [];
-          snapshot.forEach((doc) => {
-            list.push(doc.data() as SmsLog);
-          });
-          list.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
-          setSmsLogs(list);
-        }, (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'smsLogs');
-        });
-
-        // 5. Listen to pricing rates configuration
-        unsubPricing = onSnapshot(pricingDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            setPricing(docSnap.data() as PricingRates);
-          }
-        }, (error) => {
-          handleFirestoreError(error, OperationType.GET, 'config/rates');
-        });
-
-        setLoading(false);
-      }).catch(err => {
-        console.error("Firestore database initialization failed:", err);
-        setLoading(false);
-      });
-
-      return () => {
-        if (unsubFarmers) unsubFarmers();
-        if (unsubDistributions) unsubDistributions();
-        if (unsubHarvests) unsubHarvests();
-        if (unsubSms) unsubSms();
-        if (unsubPricing) unsubPricing();
-      };
-    }
-  }, [dbProvider]);
-
-  // --- Action Handlers mapping to Cloud Database ---
-
-  const handleRestoreBaseline = async () => {
-    setLoading(true);
-    try {
-      if (dbProvider === 'supabase') {
-        await sbResetToBaseline();
+    const loadSupabaseData = async () => {
+      try {
         const [f, d, h, s, p] = await Promise.all([
           sbGetFarmers(),
           sbGetDistributions(),
@@ -223,9 +76,43 @@ export default function App() {
         setHarvests(h);
         setSmsLogs(s);
         setPricing(p);
-      } else {
-        await dbResetToBaseline();
+        setLoading(false);
+      } catch (error) {
+        console.error("Failed to load data from Supabase:", error);
+        setLoading(false);
       }
+    };
+
+    loadSupabaseData();
+
+    // Subscribe to real-time changes
+    const unsub = sbSubscribeAll(() => {
+      loadSupabaseData();
+    });
+
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  // --- Action Handlers mapping to Cloud Database ---
+
+  const handleRestoreBaseline = async () => {
+    setLoading(true);
+    try {
+      await sbResetToBaseline();
+      const [f, d, h, s, p] = await Promise.all([
+        sbGetFarmers(),
+        sbGetDistributions(),
+        sbGetHarvests(),
+        sbGetSmsLogs(),
+        sbGetPricing()
+      ]);
+      setFarmers(f);
+      setDistributions(d);
+      setHarvests(h);
+      setSmsLogs(s);
+      setPricing(p);
       setPrivacyMode(false);
     } catch (err) {
       console.error("Error resetting database:", err);
@@ -242,59 +129,36 @@ export default function App() {
   }) => {
     setLoading(true);
     try {
-      if (dbProvider === 'supabase') {
-        if (imported.farmers) {
-          for (const f of imported.farmers) {
-            await sbAddFarmer(f);
-          }
-        }
-        if (imported.distributions) {
-          for (const d of imported.distributions) {
-            await sbAddDistribution(d);
-          }
-        }
-        if (imported.harvests) {
-          for (const h of imported.harvests) {
-            await sbAddHarvest(h);
-          }
-        }
-        if (imported.smsLogs) {
-          for (const sms of imported.smsLogs) {
-            await sbAddSmsLog(sms);
-          }
-        }
-        const [f, d, h, s] = await Promise.all([
-          sbGetFarmers(),
-          sbGetDistributions(),
-          sbGetHarvests(),
-          sbGetSmsLogs()
-        ]);
-        setFarmers(f);
-        setDistributions(d);
-        setHarvests(h);
-        setSmsLogs(s);
-      } else {
-        if (imported.farmers) {
-          for (const f of imported.farmers) {
-            await dbAddFarmer(f);
-          }
-        }
-        if (imported.distributions) {
-          for (const d of imported.distributions) {
-            await dbAddDistribution(d);
-          }
-        }
-        if (imported.harvests) {
-          for (const h of imported.harvests) {
-            await dbAddHarvest(h);
-          }
-        }
-        if (imported.smsLogs) {
-          for (const sms of imported.smsLogs) {
-            await dbAddSmsLog(sms);
-          }
+      if (imported.farmers) {
+        for (const f of imported.farmers) {
+          await sbAddFarmer(f);
         }
       }
+      if (imported.distributions) {
+        for (const d of imported.distributions) {
+          await sbAddDistribution(d);
+        }
+      }
+      if (imported.harvests) {
+        for (const h of imported.harvests) {
+          await sbAddHarvest(h);
+        }
+      }
+      if (imported.smsLogs) {
+        for (const sms of imported.smsLogs) {
+          await sbAddSmsLog(sms);
+        }
+      }
+      const [f, d, h, s] = await Promise.all([
+        sbGetFarmers(),
+        sbGetDistributions(),
+        sbGetHarvests(),
+        sbGetSmsLogs()
+      ]);
+      setFarmers(f);
+      setDistributions(d);
+      setHarvests(h);
+      setSmsLogs(s);
     } catch (err) {
       console.error("Error importing data backup:", err);
     } finally {
@@ -310,33 +174,21 @@ export default function App() {
       id: newFarmerId,
       registeredAt: new Date().toISOString().split('T')[0]
     };
-    if (dbProvider === 'supabase') {
-      await sbAddFarmer(newFarmer);
-      const list = await sbGetFarmers();
-      setFarmers(list);
-    } else {
-      await dbAddFarmer(newFarmer);
-    }
+    await sbAddFarmer(newFarmer);
+    const list = await sbGetFarmers();
+    setFarmers(list);
   };
 
   const handleUpdateFarmer = async (updated: Farmer) => {
-    if (dbProvider === 'supabase') {
-      await sbUpdateFarmer(updated);
-      const list = await sbGetFarmers();
-      setFarmers(list);
-    } else {
-      await dbUpdateFarmer(updated);
-    }
+    await sbUpdateFarmer(updated);
+    const list = await sbGetFarmers();
+    setFarmers(list);
   };
 
   const handleDeleteFarmer = async (id: string) => {
-    if (dbProvider === 'supabase') {
-      await sbDeleteFarmer(id);
-      const list = await sbGetFarmers();
-      setFarmers(list);
-    } else {
-      await dbDeleteFarmer(id);
-    }
+    await sbDeleteFarmer(id);
+    const list = await sbGetFarmers();
+    setFarmers(list);
   };
 
   // Seed Distribution Handlers
@@ -345,23 +197,15 @@ export default function App() {
       ...d,
       id: `DIST-${Date.now().toString().substring(7)}`
     };
-    if (dbProvider === 'supabase') {
-      await sbAddDistribution(newDist);
-      const list = await sbGetDistributions();
-      setDistributions(list);
-    } else {
-      await dbAddDistribution(newDist);
-    }
+    await sbAddDistribution(newDist);
+    const list = await sbGetDistributions();
+    setDistributions(list);
   };
 
   const handleDeleteDistribution = async (id: string) => {
-    if (dbProvider === 'supabase') {
-      await sbDeleteDistribution(id);
-      const list = await sbGetDistributions();
-      setDistributions(list);
-    } else {
-      await dbDeleteDistribution(id);
-    }
+    await sbDeleteDistribution(id);
+    const list = await sbGetDistributions();
+    setDistributions(list);
   };
 
   // Harvest Intakes Handlers
@@ -375,13 +219,9 @@ export default function App() {
       amountToPay: standardAmount,
       paymentStatus: 'Pending'
     };
-    if (dbProvider === 'supabase') {
-      await sbAddHarvest(newHarvest);
-      const list = await sbGetHarvests();
-      setHarvests(list);
-    } else {
-      await dbAddHarvest(newHarvest);
-    }
+    await sbAddHarvest(newHarvest);
+    const list = await sbGetHarvests();
+    setHarvests(list);
   };
 
   const handlePayFarmer = async (harvestId: string, transId: string, timestamp: string) => {
@@ -393,25 +233,17 @@ export default function App() {
         mpesaTransId: transId,
         paymentDate: timestamp
       };
-      if (dbProvider === 'supabase') {
-        await sbUpdateHarvest(updated);
-        const list = await sbGetHarvests();
-        setHarvests(list);
-      } else {
-        await dbUpdateHarvest(updated);
-      }
+      await sbUpdateHarvest(updated);
+      const list = await sbGetHarvests();
+      setHarvests(list);
     }
   };
 
   // Pricing Configuration Setting Handlers
   const handleUpdatePricing = async (newPricing: PricingRates) => {
-    if (dbProvider === 'supabase') {
-      await sbUpdatePricing(newPricing);
-      const list = await sbGetPricing();
-      setPricing(list);
-    } else {
-      await dbUpdatePricing(newPricing);
-    }
+    await sbUpdatePricing(newPricing);
+    const list = await sbGetPricing();
+    setPricing(list);
   };
 
   // Bulk SMS Handlers
@@ -426,22 +258,14 @@ export default function App() {
       sentAt: `${dateStr} ${timeStr}`,
       status: 'Delivered'
     };
-    if (dbProvider === 'supabase') {
-      await sbAddSmsLog(newLog);
-      const list = await sbGetSmsLogs();
-      setSmsLogs(list);
-    } else {
-      await dbAddSmsLog(newLog);
-    }
+    await sbAddSmsLog(newLog);
+    const list = await sbGetSmsLogs();
+    setSmsLogs(list);
   };
 
   const handleClearLogs = async () => {
-    if (dbProvider === 'supabase') {
-      await sbClearSmsLogs();
-      setSmsLogs([]);
-    } else {
-      await dbClearSmsLogs();
-    }
+    await sbClearSmsLogs();
+    setSmsLogs([]);
   };
 
 
@@ -515,11 +339,6 @@ export default function App() {
             onTogglePrivacy={() => setPrivacyMode(prev => !prev)}
             onRestoreBaseline={handleRestoreBaseline}
             onImportBackup={handleImportBackup}
-            dbProvider={dbProvider}
-            onSetDbProvider={(provider) => {
-              setDbProvider(provider);
-              localStorage.setItem('trinity_verd_db_provider', provider);
-            }}
           />
         );
       default:
@@ -554,7 +373,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50/60 border border-emerald-100/60 rounded-xl px-4 py-2">
             <RefreshCw className="h-4.5 w-4.5 animate-spin" />
-            Connecting to Firestore...
+            Connecting to Supabase (PostgreSQL)...
           </div>
         </div>
       </div>
