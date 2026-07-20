@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { Farmer, SeedDistribution, HarvestRecord, SmsLog, PricingRates } from './types';
 import { 
   INITIAL_FARMERS, 

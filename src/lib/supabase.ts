@@ -8,7 +8,7 @@ const hasPlaceholderValue = (value?: string) =>
 
 const looksLikeSecretKey = (value?: string) => Boolean(value && value.startsWith('sb_') && value.includes('secret'));
 
-const isConfigured = Boolean(
+export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseAnonKey &&
   !hasPlaceholderValue(supabaseUrl) &&
@@ -16,10 +16,10 @@ const isConfigured = Boolean(
   !looksLikeSecretKey(supabaseAnonKey)
 );
 
-export const supabase = isConfigured
+export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
   : null;
 
-if (!isConfigured) {
+if (!isSupabaseConfigured) {
   console.warn('Supabase is not configured. Add your real VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY values to .env.local, then restart the dev server.');
 }

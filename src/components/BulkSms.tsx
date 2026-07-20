@@ -254,7 +254,7 @@ export default function BulkSms({ farmers, smsLogs, pricing, onAddSmsLog, onClea
                   <select
                     value={selectedFarmerId}
                     onChange={e => setSelectedFarmerId(e.target.value)}
-                    className="w-full max-w-sm border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                    className="w-fit border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
                     required
                   >
                     <option value="">-- Choose Single Profile --</option>
