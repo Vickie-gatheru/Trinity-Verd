@@ -243,9 +243,58 @@ export default function SecurityCenter({
               Database & Backup Administration
             </h2>
             <p className="text-xs text-slate-500">
-              Manage client-side storage files, download system backups, and toggle privacy confidentiality masks for Kitui field offices.
+              Manage database engines, download secure backups, check data integrity, and toggle privacy masking for the Kitui operations team.
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* CLOUD DATABASE CONFIGURATION CENTER */}
+      <div className="bg-white border border-slate-100 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-50">
+          <div>
+            <h4 className="font-bold text-slate-900 text-sm font-sans flex items-center gap-1.5">
+              <Database className="h-4.5 w-4.5 text-emerald-700" />
+              Cloud Database Engine
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              The application connects securely to a robust PostgreSQL database hosted on Supabase.
+            </p>
+          </div>
+          <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-2.5 py-1 rounded font-mono uppercase">
+            Active: Supabase (SQL)
+          </span>
+        </div>
+
+        <div className="bg-emerald-50/40 border border-emerald-150 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <span className="text-sm font-bold text-slate-900 block">Supabase (PostgreSQL)</span>
+            <p className="text-[11px] text-slate-500 leading-relaxed max-w-xl">
+              Relational PostgreSQL engine optimized for full-stack deployment. Provides real-time event subscription channels, safe seed data baselines, transaction logging, and flexible SQL access for the Kitui operations team.
+            </p>
+          </div>
+          <div className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-100 font-bold px-2 py-1 rounded inline-flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Connected & Live
+          </div>
+        </div>
+
+        <div className="bg-amber-50/70 border border-amber-200/60 text-amber-900 p-4 rounded-xl space-y-2 text-xs">
+          <h5 className="font-bold flex items-center gap-1.5 text-amber-950">
+            <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
+            Completed Supabase Setup for Exported Code
+          </h5>
+          <ol className="list-decimal pl-5 space-y-1 text-slate-700 text-[11px] leading-relaxed">
+            <li>
+              Create a project on your <a href="https://supabase.com" target="_blank" rel="noreferrer" className="underline font-bold text-emerald-800 hover:text-emerald-950">Supabase Dashboard</a>.
+            </li>
+            <li>
+              Open the **SQL Editor** in Supabase and paste the contents of the <code>supabase_schema.sql</code> file (located at the root of your export). Click **Run** to build tables and seed baseline data.
+            </li>
+            <li>
+              Create a <code>.env</code> file in your local workspace based on <code>.env.example</code>, and enter your <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>.
+            </li>
+          </ol>
         </div>
       </div>
 

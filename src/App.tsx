@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Farmer, SeedDistribution, HarvestRecord, SmsLog, SmsLogCreate, PricingRates } from './types';
 import { supabase } from './lib/supabase';
+import { INITIAL_PRICING } from './sampleData';
+
 import {
-  INITIAL_FARMERS,
-  INITIAL_DISTRIBUTIONS,
-  INITIAL_HARVESTS,
-  INITIAL_SMS_LOGS,
-  INITIAL_PRICING
-} from './sampleData';
+  sbGetFarmers,
+  sbAddFarmer,
+  sbUpdateFarmer,
+  sbDeleteFarmer,
+  sbGetDistributions,
+  sbAddDistribution,
+  sbDeleteDistribution,
+  sbGetHarvests,
+  sbAddHarvest,
+  sbUpdateHarvest,
+  sbGetSmsLogs,
+  sbAddSmsLog,
+  sbClearSmsLogs,
+  sbGetPricing,
+  sbUpdatePricing,
+  sbResetToBaseline,
+  sbSubscribeAll
+} from './supabaseDb';
 
 // Sub-components import
 import Overview from './components/Overview';
@@ -18,258 +32,210 @@ import BulkSms from './components/BulkSms';
 import SecurityCenter from './components/SecurityCenter';
 
 // Icons for navigation sidebar/topbar
-import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X, ShieldCheck, Database } from 'lucide-react';
+import { LayoutDashboard, Users, Sprout, ShoppingBag, Send, Award, Droplets, MapPin, Menu, X, ShieldCheck, Database, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  // --- Persistent Storage State Initializers ---
-  const [farmers, setFarmers] = useState<Farmer[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_farmers');
-    return saved ? JSON.parse(saved) : INITIAL_FARMERS;
-  });
-
-  const [distributions, setDistributions] = useState<SeedDistribution[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_distributions');
-    return saved ? JSON.parse(saved) : INITIAL_DISTRIBUTIONS;
-  });
-
-  const [harvests, setHarvests] = useState<HarvestRecord[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_harvests');
-    return saved ? JSON.parse(saved) : INITIAL_HARVESTS;
-  });
-
-  const [smsLogs, setSmsLogs] = useState<SmsLog[]>(() => {
-    const saved = localStorage.getItem('trinity_verd_smslogs');
-    return saved ? JSON.parse(saved) : INITIAL_SMS_LOGS;
-  });
-
-  const [pricing, setPricing] = useState<PricingRates>(() => {
-    const saved = localStorage.getItem('trinity_verd_pricing');
-    return saved ? JSON.parse(saved) : INITIAL_PRICING;
-  });
-
+  const [farmers, setFarmers] = useState<Farmer[]>([]);
+  const [distributions, setDistributions] = useState<SeedDistribution[]>([]);
+  const [harvests, setHarvests] = useState<HarvestRecord[]>([]);
+  const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
+  const [pricing, setPricing] = useState<PricingRates>(INITIAL_PRICING);
   const [privacyMode, setPrivacyMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('trinity_verd_privacy_mode');
     return saved === 'true';
   });
-
-  // --- Active Module switching ---
+  const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('overview');
-  
-  // Mobile drawer toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [supabaseReady, setSupabaseReady] = useState(false);
-  const [supabaseStatus, setSupabaseStatus] = useState<'unconfigured' | 'connecting' | 'online' | 'error'>(() =>
-    supabase ? 'connecting' : 'unconfigured'
-  );
+  const [supabaseStatus, setSupabaseStatus] = useState<'unconfigured' | 'connecting' | 'online' | 'error'>('connecting');
 
-  // --- Sync State back to LocalStorage ---
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_farmers', JSON.stringify(farmers));
-  }, [farmers]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_distributions', JSON.stringify(distributions));
-  }, [distributions]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_harvests', JSON.stringify(harvests));
-  }, [harvests]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_smslogs', JSON.stringify(smsLogs));
-  }, [smsLogs]);
-
-  useEffect(() => {
-    localStorage.setItem('trinity_verd_pricing', JSON.stringify(pricing));
-  }, [pricing]);
+  const isSupabaseConfigured = Boolean(supabase);
 
   useEffect(() => {
     localStorage.setItem('trinity_verd_privacy_mode', String(privacyMode));
   }, [privacyMode]);
 
-  useEffect(() => {
-    const loadRemoteData = async () => {
-      const client = supabase;
-      if (!client) return;
+  const refreshAll = async () => {
+    try {
+      const [f, d, h, s, p] = await Promise.all([
+        sbGetFarmers(),
+        sbGetDistributions(),
+        sbGetHarvests(),
+        sbGetSmsLogs(),
+        sbGetPricing()
+      ]);
 
-      try {
-        const [farmersData, distributionsData, harvestsData, smsData, pricingData] = await Promise.all([
-          client.from('farmers').select('*').order('registeredAt', { ascending: false }),
-          client.from('distributions').select('*').order('dateOffered', { ascending: false }),
-          client.from('harvests').select('*').order('dateSold', { ascending: false }),
-          client.from('sms_logs').select('*').order('sentAt', { ascending: false }),
-          client.from('pricing').select('*').limit(1)
-        ]);
-
-        if (!farmersData.error && farmersData.data?.length) {
-          setFarmers(farmersData.data as Farmer[]);
-        }
-        if (!distributionsData.error && distributionsData.data?.length) {
-          setDistributions(distributionsData.data as SeedDistribution[]);
-        }
-        if (!harvestsData.error && harvestsData.data?.length) {
-          setHarvests(harvestsData.data as HarvestRecord[]);
-        }
-        if (!smsData.error && smsData.data?.length) {
-          setSmsLogs(smsData.data as SmsLog[]);
-        }
-        if (!pricingData.error && pricingData.data?.length) {
-          const remotePricing = pricingData.data[0] as PricingRates & { id?: string };
-          setPricing({
-            cleanSeedPerKg: remotePricing.cleanSeedPerKg,
-            husksSeedPerKg: remotePricing.husksSeedPerKg
-          });
-        }
-
-        setSupabaseStatus('online');
-      } catch (error) {
-        console.error('Supabase load failed', error);
-        setSupabaseStatus('error');
-      } finally {
-        setSupabaseReady(true);
-      }
-    };
-
-    void loadRemoteData();
-  }, []);
-
-  useEffect(() => {
-    if (!supabaseReady || !supabase) return;
-    const client = supabase;
-
-    const syncRemoteData = async () => {
-      try {
-        await Promise.all([
-          client.from('farmers').upsert(farmers, { onConflict: 'id' }),
-          client.from('distributions').upsert(distributions, { onConflict: 'id' }),
-          client.from('harvests').upsert(harvests, { onConflict: 'id' }),
-          client.from('sms_logs').upsert(smsLogs, { onConflict: 'id' }),
-          client.from('pricing').upsert([{ id: 'main', ...pricing }], { onConflict: 'id' })
-        ]);
-      } catch (error) {
-        console.error('Supabase sync failed', error);
-      }
-    };
-
-    void syncRemoteData();
-  }, [farmers, distributions, harvests, smsLogs, pricing, supabaseReady]);
-
-  // --- Action Handlers ---
-
-  const handleRestoreBaseline = () => {
-    localStorage.removeItem('trinity_verd_farmers');
-    localStorage.removeItem('trinity_verd_distributions');
-    localStorage.removeItem('trinity_verd_harvests');
-    localStorage.removeItem('trinity_verd_smslogs');
-    localStorage.removeItem('trinity_verd_pricing');
-    localStorage.removeItem('trinity_verd_privacy_mode');
-
-    setFarmers(INITIAL_FARMERS);
-    setDistributions(INITIAL_DISTRIBUTIONS);
-    setHarvests(INITIAL_HARVESTS);
-    setSmsLogs(INITIAL_SMS_LOGS);
-    setPricing(INITIAL_PRICING);
-    setPrivacyMode(false);
+      setFarmers(f);
+      setDistributions(d);
+      setHarvests(h);
+      setSmsLogs(s);
+      setPricing(p);
+      setSupabaseStatus(isSupabaseConfigured ? 'online' : 'unconfigured');
+    } catch (error) {
+      console.error('Failed to load application data:', error);
+      setSupabaseStatus(isSupabaseConfigured ? 'error' : 'unconfigured');
+    }
   };
 
-  const handleImportBackup = (imported: {
+  useEffect(() => {
+    setLoading(true);
+    void (async () => {
+      await refreshAll();
+      setLoading(false);
+    })();
+
+    const unsubscribe = sbSubscribeAll(async () => {
+      await refreshAll();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const handleRestoreBaseline = async () => {
+    setLoading(true);
+    try {
+      await sbResetToBaseline();
+      await refreshAll();
+      setPrivacyMode(false);
+    } catch (err) {
+      console.error('Error resetting database:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportBackup = async (imported: {
     farmers?: Farmer[];
     distributions?: SeedDistribution[];
     harvests?: HarvestRecord[];
     smsLogs?: SmsLog[];
   }) => {
-    if (imported.farmers) setFarmers(imported.farmers);
-    if (imported.distributions) setDistributions(imported.distributions);
-    if (imported.harvests) setHarvests(imported.harvests);
-    if (imported.smsLogs) setSmsLogs(imported.smsLogs);
+    setLoading(true);
+    try {
+      if (imported.farmers) {
+        for (const farmer of imported.farmers) {
+          await sbAddFarmer(farmer);
+        }
+      }
+      if (imported.distributions) {
+        for (const distribution of imported.distributions) {
+          await sbAddDistribution(distribution);
+        }
+      }
+      if (imported.harvests) {
+        for (const harvest of imported.harvests) {
+          await sbAddHarvest(harvest);
+        }
+      }
+      if (imported.smsLogs) {
+        for (const sms of imported.smsLogs) {
+          await sbAddSmsLog(sms);
+        }
+      }
+      await refreshAll();
+    } catch (err) {
+      console.error('Error importing data backup:', err);
+    } finally {
+      setLoading(false);
+    }
   };
-  
-  // Farmers Handlers
-  const handleAddFarmer = (f: Omit<Farmer, 'id' | 'registeredAt'>) => {
-    const newFarmerId = `FARM-${Date.now().toString().substring(7)}`;
+
+  const handleAddFarmer = async (f: Omit<Farmer, 'id' | 'registeredAt'>) => {
     const newFarmer: Farmer = {
       ...f,
-      id: newFarmerId,
+      id: `FARM-${Date.now().toString().substring(7)}`,
       registeredAt: new Date().toISOString().split('T')[0]
     };
-    setFarmers((prev: Farmer[]) => [newFarmer, ...prev]);
+
+    await sbAddFarmer(newFarmer);
+    await refreshAll();
   };
 
-  const handleUpdateFarmer = (updated: Farmer) => {
-    setFarmers((prev: Farmer[]) => prev.map((farmer: Farmer) => farmer.id === updated.id ? updated : farmer));
+  const handleUpdateFarmer = async (updated: Farmer) => {
+    await sbUpdateFarmer(updated);
+    await refreshAll();
   };
 
-  const handleDeleteFarmer = (id: string) => {
-    setFarmers((prev: Farmer[]) => prev.filter((farmer: Farmer) => farmer.id !== id));
-    // cascade deletion safely on related logs optionally, or keep history
+  const handleDeleteFarmer = async (id: string) => {
+    await sbDeleteFarmer(id);
+    await refreshAll();
   };
 
-  // Seed Distribution Handlers
-  const handleAddDistribution = (d: Omit<SeedDistribution, 'id'>) => {
+  const handleAddDistribution = async (d: Omit<SeedDistribution, 'id'>) => {
     const newDist: SeedDistribution = {
       ...d,
       id: `DIST-${Date.now().toString().substring(7)}`
     };
-    setDistributions((prev: SeedDistribution[]) => [newDist, ...prev]);
+
+    await sbAddDistribution(newDist);
+    await refreshAll();
   };
 
-  const handleDeleteDistribution = (id: string) => {
-    setDistributions((prev: SeedDistribution[]) => prev.filter((item: SeedDistribution) => item.id !== id));
+  const handleDeleteDistribution = async (id: string) => {
+    await sbDeleteDistribution(id);
+    await refreshAll();
   };
 
-  // Harvest Intakes Handlers
-  const handleAddHarvest = (h: Omit<HarvestRecord, 'id' | 'paymentStatus' | 'amountToPay' | 'totalKgs'>) => {
-    const standardAmount = (h.cleanSeedKgs * pricing.cleanSeedPerKg) + (h.husksSeedKgs * pricing.husksSeedPerKg);
-    const totalW = h.cleanSeedKgs + h.husksSeedKgs;
+  const handleAddHarvest = async (h: Omit<HarvestRecord, 'id' | 'paymentStatus' | 'amountToPay' | 'totalKgs'>) => {
+    const totalKgs = h.cleanSeedKgs + h.husksSeedKgs;
+    const amountToPay = (h.cleanSeedKgs * pricing.cleanSeedPerKg) + (h.husksSeedKgs * pricing.husksSeedPerKg);
+
     const newHarvest: HarvestRecord = {
       ...h,
       id: `HARV-${Date.now().toString().substring(7)}`,
-      totalKgs: totalW,
-      amountToPay: standardAmount,
+      totalKgs,
+      amountToPay,
       paymentStatus: 'Pending'
     };
-    setHarvests((prev: HarvestRecord[]) => [newHarvest, ...prev]);
+
+    await sbAddHarvest(newHarvest);
+    await refreshAll();
   };
 
-  const handlePayFarmer = (harvestId: string, transId: string, timestamp: string) => {
-    setHarvests((prev: HarvestRecord[]) => prev.map((item: HarvestRecord) => {
-      if (item.id === harvestId) {
-        return {
-          ...item,
-          paymentStatus: 'Paid',
-          mpesaTransId: transId,
-          paymentDate: timestamp
-        };
-      }
-      return item;
-    }));
+  const handlePayFarmer = async (harvestId: string, transId: string, timestamp: string) => {
+    const record = harvests.find(h => h.id === harvestId);
+    if (!record) return;
+
+    const updated: HarvestRecord = {
+      ...record,
+      paymentStatus: 'Paid',
+      mpesaTransId: transId,
+      paymentDate: timestamp
+    };
+
+    await sbUpdateHarvest(updated);
+    await refreshAll();
   };
 
-  // Pricing Configuration Setting Handlers
-  const handleUpdatePricing = (newPricing: PricingRates) => {
-    setPricing(newPricing);
+  const handleUpdatePricing = async (newPricing: PricingRates) => {
+    await sbUpdatePricing(newPricing);
+    const list = await sbGetPricing();
+    setPricing(list);
   };
 
-  // Bulk SMS Handlers
-  const handleAddSmsLog = (sms: SmsLogCreate) => {
-    const currentLocal = new Date();
-    const dateStr = currentLocal.toISOString().split('T')[0];
-    const timeStr = currentLocal.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    
+  const handleAddSmsLog = async (sms: SmsLogCreate) => {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
     const newLog: SmsLog = {
       ...sms,
       id: `SMS-${Date.now().toString().substring(7)}`,
       sentAt: `${dateStr} ${timeStr}`,
       status: sms.status ?? 'Delivered'
     };
-    setSmsLogs((prev: SmsLog[]) => [newLog, ...prev]);
+
+    await sbAddSmsLog(newLog);
+    await refreshAll();
   };
 
-  const handleClearLogs = () => {
+  const handleClearLogs = async () => {
+    await sbClearSmsLogs();
     setSmsLogs([]);
   };
 
-  // Dynamic tab routing render helper
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
@@ -346,7 +312,6 @@ export default function App() {
     }
   };
 
-  // Navigation Links configuration
   const navigationItems = [
     { id: 'overview', label: 'Overview Dashboard', icon: LayoutDashboard },
     { id: 'farmers', label: 'Farmers Enrollment', icon: Users },
@@ -371,6 +336,28 @@ export default function App() {
     online: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     error: 'bg-rose-50 text-rose-700 border-rose-100'
   }[supabaseStatus];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50/50 flex flex-col items-center justify-center p-6 text-slate-800 font-sans">
+        <div className="max-w-md w-full bg-white border border-slate-100 rounded-2xl p-8 shadow-xs text-center flex flex-col items-center gap-6">
+          <div className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl animate-pulse">
+            <Database className="h-10 w-10" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-bold font-sans text-slate-900">Synchronizing with Cloud</h1>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Establishing a real-time secure connection to the Trinity Verd cloud database. Loading enrollment directories, distribution logs, and active market rates...
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50/60 border border-emerald-100/60 rounded-xl px-4 py-2">
+            <RefreshCw className="h-4.5 w-4.5 animate-spin" />
+            Connecting to Supabase (PostgreSQL)...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans text-slate-800 antialiased selection:bg-emerald-700/10 selection:text-emerald-800">
