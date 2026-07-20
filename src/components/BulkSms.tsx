@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Farmer, SmsLog, PricingRates } from '../types';
+import { Farmer, SmsLog, SmsLogCreate, PricingRates } from '../types';
 import { Send, Search, Check, Smartphone, Users, Trash2, HelpCircle, ArrowRight } from 'lucide-react';
 
 interface BulkSmsProps {
   farmers: Farmer[];
   smsLogs: SmsLog[];
   pricing: PricingRates;
-  onAddSmsLog: (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => void;
+  onAddSmsLog: (sms: SmsLogCreate) => void;
   onClearLogs: () => void;
   privacyMode?: boolean;
 }
@@ -51,7 +51,36 @@ export default function BulkSms({ farmers, smsLogs, pricing, onAddSmsLog, onClea
   };
 
   // Safe Broadcast resolution
-  const handleSendSms = (e: React.FormEvent) => {
+  const formatMobile = (phone: string) => {
+    if (phone.startsWith('+')) return phone.slice(1);
+    return phone;
+  };
+
+  const sendSmsThroughProxy = async (phone: string, message: string) => {
+    const response = await fetch('/api/sms/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ mobile: formatMobile(phone), message, sender_name: 'TRIN_VERD', response_type: 'json', service_id: 0 })
+    });
+
+    const result = await response.text();
+    let parsedResult: any;
+    try {
+      parsedResult = JSON.parse(result);
+    } catch {
+      parsedResult = result;
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: parsedResult
+    };
+  };
+
+  const handleSendSms = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -77,40 +106,50 @@ export default function BulkSms({ farmers, smsLogs, pricing, onAddSmsLog, onClea
       return setErrorMsg('Recipient group has zero active phone numbers.');
     }
 
-    // Trigger Bulk Send simulation
     setIsSendingActive(true);
     setPercentDone(0);
     const logTrace: string[] = [`Initiating bulk alert queue for ${targets.length} targets...`];
     setSendingProgress(logTrace);
 
     let progressIndex = 0;
-    const interval = setInterval(() => {
-      if (progressIndex < targets.length) {
-        const farmer = targets[progressIndex];
-        
-        // Dynamically replace variables ({Name})
-        const personalizedMsg = messageText.replace(/{Name}/g, farmer.fullName);
+    let failedMessages = 0;
 
-        // Commit to state
-        onAddSmsLog({
-          recipientPhone: farmer.phone,
-          recipientName: farmer.fullName,
-          message: personalizedMsg
-        });
+    for (const farmer of targets) {
+      const personalizedMsg = messageText.replace(/{Name}/g, farmer.fullName);
+      const result = await sendSmsThroughProxy(farmer.phone, personalizedMsg);
 
-        logTrace.push(`[SMS Sent] Dispatch successful to ${farmer.fullName} (${farmer.phone})`);
-        setSendingProgress([...logTrace]);
-        progressIndex++;
-        setPercentDone(Math.round((progressIndex / targets.length) * 100));
-      } else {
-        clearInterval(interval);
-        setTimeout(() => {
-          setIsSendingActive(false);
-          setSuccessMsg(`Simulated Bulk SMS successfully broadcast to ${targets.length} farmers!`);
-          setMessageText('');
-        }, 800);
+      const status = result.ok ? 'Delivered' : 'Failed';
+      onAddSmsLog({
+        recipientPhone: farmer.phone,
+        recipientName: farmer.fullName,
+        message: personalizedMsg,
+        status
+      });
+
+      logTrace.push(
+        result.ok
+          ? `[SMS Sent] ${farmer.fullName} (${farmer.phone})`
+          : `[SMS Failed] ${farmer.fullName} (${farmer.phone}) - ${JSON.stringify(result.body)}`
+      );
+
+      if (!result.ok) {
+        failedMessages += 1;
       }
-    }, 450);
+
+      progressIndex += 1;
+      setSendingProgress([...logTrace]);
+      setPercentDone(Math.round((progressIndex / targets.length) * 100));
+    }
+
+    setTimeout(() => {
+      setIsSendingActive(false);
+      setMessageText('');
+      if (failedMessages === 0) {
+        setSuccessMsg(`Bulk SMS successfully sent to ${targets.length} farmers.`);
+      } else {
+        setErrorMsg(`Sent ${targets.length - failedMessages} messages, but ${failedMessages} failed. Check logs.`);
+      }
+    }, 400);
   };
 
   // Filter sent logs list

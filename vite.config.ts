@@ -15,6 +15,13 @@ export default defineConfig(() => {
       // Dev server HMR and file watching configuration
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api/sms': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+          secure: false
+        }
+      }
     },
   };
 });

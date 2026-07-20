@@ -43,6 +43,13 @@ export interface SmsLog {
   status: 'Delivered' | 'Failed';
 }
 
+export interface SmsLogCreate {
+  recipientPhone: string;
+  recipientName: string;
+  message: string;
+  status?: 'Delivered' | 'Failed';
+}
+
 export interface PricingRates {
   cleanSeedPerKg: number; // e.g., KSh 120
   husksSeedPerKg: number; // e.g., KSh 60

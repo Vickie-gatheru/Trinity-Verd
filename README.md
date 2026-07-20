@@ -16,5 +16,9 @@ View your app in AI Studio: https://ai.studio/apps/c25e973e-a3cb-4e31-8ce1-56041
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+3. Set the Taifa Mobile API key in `.env.local`:
+   `TAIFA_API_KEY=your_h_api_key`
+4. Run the SMS proxy server in one terminal:
+   `npm run sms-server`
+5. Start the app in another terminal:
    `npm run dev`

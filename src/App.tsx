@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Farmer, SeedDistribution, HarvestRecord, SmsLog, PricingRates } from './types';
+import { Farmer, SeedDistribution, HarvestRecord, SmsLog, SmsLogCreate, PricingRates } from './types';
+import { supabase } from './lib/supabase';
 import {
   INITIAL_FARMERS,
   INITIAL_DISTRIBUTIONS,
@@ -56,6 +57,10 @@ export default function App() {
   
   // Mobile drawer toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [supabaseReady, setSupabaseReady] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState<'unconfigured' | 'connecting' | 'online' | 'error'>(() =>
+    supabase ? 'connecting' : 'unconfigured'
+  );
 
   // --- Sync State back to LocalStorage ---
   useEffect(() => {
@@ -81,6 +86,73 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('trinity_verd_privacy_mode', String(privacyMode));
   }, [privacyMode]);
+
+  useEffect(() => {
+    const loadRemoteData = async () => {
+      const client = supabase;
+      if (!client) return;
+
+      try {
+        const [farmersData, distributionsData, harvestsData, smsData, pricingData] = await Promise.all([
+          client.from('farmers').select('*').order('registeredAt', { ascending: false }),
+          client.from('distributions').select('*').order('dateOffered', { ascending: false }),
+          client.from('harvests').select('*').order('dateSold', { ascending: false }),
+          client.from('sms_logs').select('*').order('sentAt', { ascending: false }),
+          client.from('pricing').select('*').limit(1)
+        ]);
+
+        if (!farmersData.error && farmersData.data?.length) {
+          setFarmers(farmersData.data as Farmer[]);
+        }
+        if (!distributionsData.error && distributionsData.data?.length) {
+          setDistributions(distributionsData.data as SeedDistribution[]);
+        }
+        if (!harvestsData.error && harvestsData.data?.length) {
+          setHarvests(harvestsData.data as HarvestRecord[]);
+        }
+        if (!smsData.error && smsData.data?.length) {
+          setSmsLogs(smsData.data as SmsLog[]);
+        }
+        if (!pricingData.error && pricingData.data?.length) {
+          const remotePricing = pricingData.data[0] as PricingRates & { id?: string };
+          setPricing({
+            cleanSeedPerKg: remotePricing.cleanSeedPerKg,
+            husksSeedPerKg: remotePricing.husksSeedPerKg
+          });
+        }
+
+        setSupabaseStatus('online');
+      } catch (error) {
+        console.error('Supabase load failed', error);
+        setSupabaseStatus('error');
+      } finally {
+        setSupabaseReady(true);
+      }
+    };
+
+    void loadRemoteData();
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const client = supabase;
+
+    const syncRemoteData = async () => {
+      try {
+        await Promise.all([
+          client.from('farmers').upsert(farmers, { onConflict: 'id' }),
+          client.from('distributions').upsert(distributions, { onConflict: 'id' }),
+          client.from('harvests').upsert(harvests, { onConflict: 'id' }),
+          client.from('sms_logs').upsert(smsLogs, { onConflict: 'id' }),
+          client.from('pricing').upsert([{ id: 'main', ...pricing }], { onConflict: 'id' })
+        ]);
+      } catch (error) {
+        console.error('Supabase sync failed', error);
+      }
+    };
+
+    void syncRemoteData();
+  }, [farmers, distributions, harvests, smsLogs, pricing, supabaseReady]);
 
   // --- Action Handlers ---
 
@@ -120,15 +192,15 @@ export default function App() {
       id: newFarmerId,
       registeredAt: new Date().toISOString().split('T')[0]
     };
-    setFarmers(prev => [newFarmer, ...prev]);
+    setFarmers((prev: Farmer[]) => [newFarmer, ...prev]);
   };
 
   const handleUpdateFarmer = (updated: Farmer) => {
-    setFarmers(prev => prev.map(f => f.id === updated.id ? updated : f));
+    setFarmers((prev: Farmer[]) => prev.map((farmer: Farmer) => farmer.id === updated.id ? updated : farmer));
   };
 
   const handleDeleteFarmer = (id: string) => {
-    setFarmers(prev => prev.filter(f => f.id !== id));
+    setFarmers((prev: Farmer[]) => prev.filter((farmer: Farmer) => farmer.id !== id));
     // cascade deletion safely on related logs optionally, or keep history
   };
 
@@ -138,11 +210,11 @@ export default function App() {
       ...d,
       id: `DIST-${Date.now().toString().substring(7)}`
     };
-    setDistributions(prev => [newDist, ...prev]);
+    setDistributions((prev: SeedDistribution[]) => [newDist, ...prev]);
   };
 
   const handleDeleteDistribution = (id: string) => {
-    setDistributions(prev => prev.filter(item => item.id !== id));
+    setDistributions((prev: SeedDistribution[]) => prev.filter((item: SeedDistribution) => item.id !== id));
   };
 
   // Harvest Intakes Handlers
@@ -156,11 +228,11 @@ export default function App() {
       amountToPay: standardAmount,
       paymentStatus: 'Pending'
     };
-    setHarvests(prev => [newHarvest, ...prev]);
+    setHarvests((prev: HarvestRecord[]) => [newHarvest, ...prev]);
   };
 
   const handlePayFarmer = (harvestId: string, transId: string, timestamp: string) => {
-    setHarvests(prev => prev.map(item => {
+    setHarvests((prev: HarvestRecord[]) => prev.map((item: HarvestRecord) => {
       if (item.id === harvestId) {
         return {
           ...item,
@@ -179,9 +251,8 @@ export default function App() {
   };
 
   // Bulk SMS Handlers
-  const handleAddSmsLog = (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => {
+  const handleAddSmsLog = (sms: SmsLogCreate) => {
     const currentLocal = new Date();
-    // format as YYYY-MM-DD HH:MM
     const dateStr = currentLocal.toISOString().split('T')[0];
     const timeStr = currentLocal.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     
@@ -189,9 +260,9 @@ export default function App() {
       ...sms,
       id: `SMS-${Date.now().toString().substring(7)}`,
       sentAt: `${dateStr} ${timeStr}`,
-      status: 'Delivered'
+      status: sms.status ?? 'Delivered'
     };
-    setSmsLogs(prev => [newLog, ...prev]);
+    setSmsLogs((prev: SmsLog[]) => [newLog, ...prev]);
   };
 
   const handleClearLogs = () => {
@@ -287,6 +358,20 @@ export default function App() {
 
   const activeLabel = navigationItems.find(i => i.id === activeTab)?.label || 'Overview';
 
+  const supabaseStatusText = {
+    unconfigured: 'Supabase not configured',
+    connecting: 'Supabase connecting...',
+    online: 'Supabase online',
+    error: 'Supabase unavailable'
+  }[supabaseStatus];
+
+  const supabaseStatusStyle = {
+    unconfigured: 'bg-rose-50 text-rose-700 border-rose-100',
+    connecting: 'bg-amber-50 text-amber-700 border-amber-100',
+    online: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    error: 'bg-rose-50 text-rose-700 border-rose-100'
+  }[supabaseStatus];
+
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans text-slate-800 antialiased selection:bg-emerald-700/10 selection:text-emerald-800">
       
@@ -320,9 +405,9 @@ export default function App() {
               <span className="text-sm font-bold text-amber-700">KSh {pricing.husksSeedPerKg}/Kg</span>
             </div>
             <div className="h-8 w-px bg-slate-150" />
-            <div className="flex items-center gap-2 bg-slate-50 border px-3 py-1 bg-white rounded-lg">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs text-slate-500 font-medium">MPESA System Active</span>
+            <div className={`flex items-center gap-2 border px-3 py-1 rounded-lg ${supabaseStatusStyle}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${supabaseStatus === 'online' ? 'bg-emerald-500' : supabaseStatus === 'connecting' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+              <span className="text-xs font-medium">{supabaseStatusText}</span>
             </div>
           </div>
 

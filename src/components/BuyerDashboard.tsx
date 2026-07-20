@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Farmer, HarvestRecord, PricingRates, SmsLog } from '../types';
+import { Farmer, HarvestRecord, PricingRates, SmsLogCreate } from '../types';
 import { ShoppingBag, RefreshCw, Smartphone, DollarSign, Check, Award, ArrowUpRight, ShieldCheck, ChevronRight, Settings } from 'lucide-react';
 
 interface BuyerDashboardProps {
@@ -9,7 +9,7 @@ interface BuyerDashboardProps {
   onUpdatePricing: (pricing: PricingRates) => void;
   onAddHarvest: (harvest: Omit<HarvestRecord, 'id' | 'paymentStatus' | 'amountToPay' | 'totalKgs'>) => void;
   onPayFarmer: (id: string, mpesaTransId: string, paymentDate: string) => void;
-  onAddSmsLog: (sms: Omit<SmsLog, 'id' | 'sentAt' | 'status'>) => void;
+  onAddSmsLog: (sms: SmsLogCreate) => void;
   privacyMode?: boolean;
 }
 
